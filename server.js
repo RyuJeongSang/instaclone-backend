@@ -1,42 +1,50 @@
-import { ApolloServer, gql } from "apollo-server";
+require("dotenv").config();
 
-const typeDefs = gql`
-  type Movie {
-    title: String
-    year: Int
-  }
-  type Query {
-    movies: [Movie]
-    movie: Movie
-  }
-  type Mutation {
-    createMovie(title: String!): Boolean
-    deleteMovie(title: String!): Boolean
-  }
-`;
+import express from "express";
+import http from "http";
+import { ApolloServer } from "apollo-server-express";
+import { graphqlUploadExpress } from "graphql-upload";
+import {
+  ApolloServerPluginDrainHttpServer,
+  ApolloServerPluginLandingPageGraphQLPlayground,
+} from "apollo-server-core";
 
-const resolvers = {
-  Query: {
-    movies: () => [],
-    movie: () => ({ title: "asd", year: 2021 }),
-  },
-  Mutation: {
-    createMovie: (_, { title }) => {
-      console.log(title);
-      return true;
+import { typeDefs, resolvers } from "./schema";
+import { getUser } from "./users/users.utils";
+
+const PORT = process.env.PORT;
+
+const startServer = async () => {
+  const app = express();
+  app.use(graphqlUploadExpress());
+
+  const httpServer = http.createServer(app);
+  const server = new ApolloServer({
+    typeDefs,
+    resolvers,
+    plugins: [
+      ApolloServerPluginDrainHttpServer({ httpServer }),
+      ApolloServerPluginLandingPageGraphQLPlayground(),
+    ],
+    context: async ({ req }) => {
+      return {
+        loggedInUser: await getUser(req.headers.token),
+      };
     },
-    deleteMovie: (_, { title }) => {
-      console.log(title);
-      return true;
-    },
-  },
+  });
+
+  await server.start();
+
+  server.applyMiddleware({
+    app,
+    path: "/",
+  });
+
+  await new Promise((resolve) => httpServer.listen({ port: PORT }, resolve));
+
+  console.log(
+    `Server is running on http://localhost:${PORT}${server.graphqlPath}`
+  );
 };
 
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-});
-
-server
-  .listen()
-  .then(() => console.log("Server is running on http://localhost:4000/"));
+startServer();
